@@ -91,10 +91,68 @@ def evol_algo(model, fitness, population_size, num_generations, sigmas, x, y, ma
                     counter+=1
             # Replace population with offspring
             population = offsprings.copy()
-            # Sort by fitness and select top performers
+            # Evaluate fitness of all individuals
             tfitness = np.array([fitness(m, x, y) for m in population])
+            # Sort by fitness and select top performers
             sorted_indices = np.argsort(tfitness)
             population = [population[i] for i in sorted_indices[-population_size:]]
+    # Return best performing model
+    return population[-1]
+
+#Evolutionary Strategy(myu+lambda)
+def evolplusalgo(model, fitness, population_size, num_generations, sigmas, x, y, max_limit, sample_freq):
+    """
+    Evolutionary Strategy (μ+λ) implementation with multiple mutation rates
+    Parents compete with offspring for survival, unlike (μ,λ) where parents are discarded
+    
+    Parameters:
+    - model: base neural network model to evolve
+    - fitness: fitness function to evaluate models
+    - population_size: number of parents (μ) 
+    - num_generations: number of offspring per generation (λ)
+    - sigmas: list of mutation rates for each weight layer
+    - x, y: training data and labels
+    - max_limit: maximum number of evolution cycles
+    - sample_freq: frequency of sampling for adaptation
+    """
+    # Initialize population with random weights
+    population = [tf.keras.models.clone_model(model) for _ in range(population_size)]
+    for i in range(population_size-1):
+        population[i].set_weights([np.random.randn(*w.shape) for w in model.get_weights()])
+    
+    # Continue evolution until max_limit reached or fitness threshold met
+    while max_limit>0 and fitness(population[-1], x, y)<0.7:
+        gp = []  # Store fitness values for plotting
+        
+        # Generate and evaluate multiple generations
+        for n in range(sample_freq):
+            offsprings = []
+            # Create offspring through mutation
+            for generation in range(num_generations):
+                parent = random.choice(population)
+                tempoff = tf.keras.models.clone_model(parent)
+                # Apply layer-specific mutations
+                tempoff.set_weights([w + sigma * np.random.randn(*w.shape) for w, sigma in zip(parent.get_weights(), sigmas)])
+                offsprings.append(tempoff)
+            
+            # Combine parents and offspring for selection
+            population = population + offsprings
+            # Evaluate fitness of all individuals
+            tfitness = np.array([fitness(m, x, y) for m in population])
+            # Select top performers based on fitness
+            sorted_indices = np.argsort(tfitness)
+            population = [population[i] for i in sorted_indices[-population_size:]]
+            # Record best fitness for plotting
+            gp.append(mean(tfitness))
+        max_limit-=1
+    
+    # Visualize fitness progression
+    plt.plot(gp)
+    plt.title('Model Fitness')
+    plt.ylabel('Fitness')
+    plt.show()
+    
+    # Return best performing model
     return population[-1]
 
 # Define neural network architecture
@@ -122,7 +180,10 @@ avg_fit = 0
 for _ in range(trials):
     # Generate random mutation rates for each weight layer
     sigmas = [np.round(np.random.rand(*w.shape), 1) for w in model.get_weights()]
-    history = evol_algo(model, fitness_func, population_size=4, num_generations=20, 
+    # Choose the algorithm to use, either evol_algo (μ,λ) or evolplusalgo (μ+λ). Currently using (μ+λ)
+    #history = evol_algo(model, fitness_func, population_size=4, num_generations=20, 
+    #                   sigmas=sigmas, x=x_train, y=y_train, max_limit=10, sample_freq=5)
+    history = evolplusalgo(model, fitness_func, population_size=4, num_generations=20, 
                        sigmas=sigmas, x=x_train, y=y_train, max_limit=10, sample_freq=5)
     avg_fit += fitness_func(history, x_test, y_test)
 
