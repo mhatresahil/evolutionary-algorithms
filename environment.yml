@@ -1,0 +1,9 @@
+name: evolve
+channels:
+  - defaults
+dependencies:
+  - tensorflow
+  - matplotlib
+  - pandas
+  - scikit-learn
+prefix: /Users/sahilmhatre/miniconda3/envs/evolve
