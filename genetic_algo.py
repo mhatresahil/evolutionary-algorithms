@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from statistics import mean
 import sklearn.metrics
 import random
+from multiprocessing import Pool, cpu_count
 
 # Read the dataset
 data = pd.read_csv('Hotel Reservations.csv')
@@ -60,53 +61,99 @@ def fitness_func(model, weights, x, y):
     score = model.evaluate(x, y, verbose=0)
     return score[1]
 
+def evaluate_individual(args):
+    model, weights, x, y = args
+    return fitness_func(model, weights, x, y)
+
 #Genetic Algorithm
 def genetic_algo(model, fitness, population_size, x, y, max_limit):
-    # Initialize population with masked weights
-    weights = model.get_weights()
-    weights_vector = np.concatenate([w.flatten() for w in weights])
-    population = [weights_vector * np.random.choice([0, 1], size=weights_vector.shape, p=[0.9, 0.1]) 
-                 for _ in range(population_size)]
+    """
+    Implements a genetic algorithm to optimize neural network weights
     
+    Args:
+        model: Neural network model to optimize
+        fitness: Fitness function to evaluate individuals
+        population_size: Size of population in each generation
+        x: Input features for fitness evaluation
+        y: Target values for fitness evaluation
+        max_limit: Maximum number of generations
+        
+    Returns:
+        model: Model with optimized weights
+        max_fit: Maximum fitness achieved
+    """
+    
+    # Initialize population with masked weight vectors
+    population = []
+    for i in range(population_size):
+        weights = model.get_weights()
+        weights_vector = np.concatenate([w.flatten() for w in weights])
+        # Apply mask with 10% probability of keeping weights
+        mask = np.random.choice([0, 1], size=weights_vector.shape, p=[0.9, 0.1])
+        population.append(weights_vector*mask)
+    
+    # Set up parallel processing
+    num_cores = cpu_count()
+    pool = Pool(processes=num_cores)
+    
+    # Main evolution loop
     for _ in range(max_limit):
         new_population = []
-        #fitness-proportionate selection
-        tfitness = [fitness(model, w, x, y) for w in population]
+        
+        # Calculate fitness scores for entire population in parallel
+        fitness_args = [(model, w, x, y) for w in population]
+        tfitness = pool.map(evaluate_individual, fitness_args)
+        
+        # Calculate selection probabilities based on fitness
         total_fit = sum(tfitness)
         probabilities = [score / total_fit for score in tfitness]
+        
+        # Generate new population through selection, crossover and mutation
         for j in range(population_size//2):
+            # Select two parents based on fitness proportions
             p1_index = np.random.choice(len(tfitness), replace = False, p = probabilities)
             p2_index = np.random.choice(len(tfitness), replace = False, p = probabilities)
             p1 = population[p1_index]
             p2 = population[p2_index]
             
-            #Generate Offsprings
+            # Create copies for offspring
             child = p1.copy()
             child1 = p2.copy()
             
-            #Uniform Crossover with 90% probability
+            # Perform uniform crossover with 90% probability
             if random.choices([True, False], weights=[0.9, 0.1])[0]:
                 par_shape = p1.shape
                 ux = np.random.randint(low=0, high=2, size=par_shape).astype(bool)
-                child[~ux] = p2[~ux]
+                child[~ux] = p2[~ux]  # Swap genes where ux is False
                 child1[~ux] = p1[~ux]
             
-            #Mutation
+            # Mutate first child by randomly activating one masked weight
             masked_indices = np.where(child == 0)[0]
-            selected_index = np.random.choice(masked_indices)
-            selected_weight = np.random.choice(obj[0][2][0].flatten())
-            child[selected_index] = selected_weight
+            if len(masked_indices) > 0:
+                selected_index = np.random.choice(masked_indices)
+                child[selected_index] = np.random.uniform(0, 1)
             new_population.append(child)
             
+            # Mutate second child similarly
             masked_indices = np.where(child1 == 0)[0]
-            selected_index = np.random.choice(masked_indices)
-            selected_weight = np.random.choice(obj[0][2][0].flatten())
-            child1[selected_index] = selected_weight
+            if len(masked_indices) > 0:  # Only mutate if there are masked indices
+                selected_index = np.random.choice(masked_indices)
+                child1[selected_index] = np.random.uniform(0, 1)
             new_population.append(child1)
             
+        # Elitism: Keep best individual from previous generation
         new_population.append(population[tfitness.index(max(tfitness))])
         population = new_population.copy()
-    tfitness = [fitness(model, w, x, y) for w in population]
+    
+    # Final fitness evaluation of last generation
+    fitness_args = [(model, w, x, y) for w in population]
+    tfitness = pool.map(evaluate_individual, fitness_args)
+    
+    # Clean up parallel processing
+    pool.close()
+    pool.join()
+    
+    # Get best performing individual and update model weights
     max_fit = max(tfitness)
     weights = population[tfitness.index(max_fit)]
     model.layers[0].set_weights([weights[:14*28].reshape((14, 28)), weights[14*28:420]])
@@ -124,12 +171,13 @@ def baseline_model():
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     return model
 
-# Training
-model = baseline_model()
-avg_fit = 0
-num_runs = 1
-for _ in range(num_runs):
-    history, fit = genetic_algo(model, fitness_func, population_size=784, x=x_train, y=y_train, max_limit=19)
-    avg_fit+=fit
+if __name__ == '__main__':
+    # Training
+    model = baseline_model()
+    avg_fit = 0
+    num_runs = 1
+    for _ in range(num_runs):
+        history, fit = genetic_algo(model, fitness_func, population_size=784, x=x_train, y=y_train, max_limit=10)
+        avg_fit+=fit
 
-print(f"Average fitness: {avg_fit/num_runs:.4f}")
+    print(f"Average fitness: {avg_fit/num_runs:.4f}")
