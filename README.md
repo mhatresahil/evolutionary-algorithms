@@ -94,13 +94,6 @@ python evols.py
 python multi_mutation.py
 ```
 
-## Dataset
-
-The algorithms are tested on the Hotel Reservations dataset, which includes various features to predict booking status. The data preprocessing includes:
-- Removal of unnecessary columns
-- Dataset balancing through undersampling
-- 70-30 train-test split
-
 ## Model Architecture
 
 All implementations use a simple neural network with:
