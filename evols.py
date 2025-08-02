@@ -72,7 +72,10 @@ def evol_algo(model, fitness, population_size, num_generations, sigma, x, y, max
             population = [population[i] for i in sorted_indices[-population_size:]]
         
         # Adapt mutation step size (sigma)
-        if counter < (n*num_generations)//5:
+        # Adjust mutation rate based on the proportion of successful
+        # mutations over all attempted mutations in this cycle.
+        total_mutations = sample_freq * num_generations
+        if counter < total_mutations//5:
             sigma = (1-r)*sigma  # Decrease if few successful mutations
         else:
             sigma = (1+r)*sigma  # Increase if many successful mutations
@@ -112,7 +115,9 @@ def evolplusalgo(model, fitness, population_size, num_generations, sigma, x, y, 
             gp.append(fitness(population[-1], x, y))
         
         # Adapt mutation step size (sigma)
-        if counter < (n*num_generations)//5:
+        # Adjust mutation rate based on overall success rate in this cycle
+        total_mutations = sample_freq * num_generations
+        if counter < total_mutations//5:
             sigma = (1-r)*sigma  # Decrease if few successful mutations
         else:
             sigma = (1+r)*sigma  # Increase if many successful mutations
